@@ -10,6 +10,13 @@ This project demonstrates running a Smithay-based compositor natively on Windows
 - **Winit Loop**: Native Windows message pump integration.
 
 ## Usage
+### Option A: Cloud Build (Recommended)
+1. Go to the [Actions](../../actions) tab.
+2. Click on the latest workflow run.
+3. Scroll down to **Artifacts** and download `win-way-exe`.
+4. Run `win-way.exe` on your Windows machine.
+
+### Option B: Local Build
 1. Install Rust on Windows (`rustup-init.exe` -> default-msvc).
 2. Clone this repo:
    ```powershell
