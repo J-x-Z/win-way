@@ -1,0 +1,21 @@
+[package]
+name = "win-way"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = { version = "0.30", features = ["rwh_06"] }
+glutin = "0.32"
+glutin-winit = "0.5"
+raw-window-handle = "0.6"
+log = "0.4"
+env_logger = "0.11"
+
+# We use our custom fork which has the exposed WinitBackend for Windows/Mac
+[dependencies.smithay]
+git = "https://github.com/J-x-Z/smithay-universal"
+default-features = false
+features = ["backend_winit", "renderer_gl", "wayland_frontend"]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Windows specific deps if needed
