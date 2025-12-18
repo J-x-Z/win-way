@@ -1471,7 +1471,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 [[package]]
 name = "smithay"
 version = "0.7.0"
-source = "git+https://github.com/J-x-Z/smithay-universal#ead5dde6554535756d4ffc108d35fd3ff30e4211"
+source = "git+https://github.com/J-x-Z/smithay-universal#1c0fc0e0d324e0f0edcff091e983e7db01ebdefb"
 dependencies = [
  "appendlist",
  "atomic_float",
@@ -1494,7 +1494,6 @@ dependencies = [
  "thiserror 2.0.17",
  "tracing",
  "winit",
- "xkbcommon",
 ]
 
 [[package]]
@@ -2206,17 +2205,6 @@ name = "xcursor"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bec9e4a500ca8864c5b47b8b482a73d62e4237670e5b5f1d6b9e3cae50f28f2b"
-
-[[package]]
-name = "xkbcommon"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7a974f48060a14e95705c01f24ad9c3345022f4d97441b8a36beb7ed5c4a02d"
-dependencies = [
- "libc",
- "memmap2",
- "xkeysym",
-]
 
 [[package]]
 name = "xkbcommon-dl"
