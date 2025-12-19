@@ -1,21 +1,17 @@
 # Win-way
 
-Windows-native GPU-accelerated display server for Wayland applications from WSL.
+Windows 端的 Wayland 应用显示器（实验性项目）
 
-## Features
+## 当前状态
 
-- 🖥️ **GPU Rendering** - OpenGL 3.3+ with VSync
-- 🔌 **TCP Server** - Accepts connections from WSL via socat
-- 🎨 **Hardware Acceleration** - Uses WGL on Windows
-- 📺 **WPRD Protocol** - Custom frame format for efficient transfer
+⚠️ **这是一个实验性项目，目前功能非常有限：**
 
-## Architecture
+- ✅ 可以创建 GPU 加速的 Windows 窗口
+- ✅ 可以接收 TCP 连接
+- ✅ 可以显示通过 WPRD 协议发送的帧数据
+- ❌ **暂时无法显示 WSL Wayland 应用**（因为无法通过 TCP 传递 Unix 文件描述符）
 
-```
-WSL Wayland App → socat → TCP:9999 → win-way (GPU render) → Windows Display
-```
-
-## Installation
+## 安装
 
 ```powershell
 git clone https://github.com/J-x-Z/win-way.git
@@ -23,46 +19,28 @@ cd win-way
 cargo build --release
 ```
 
-## Usage
+## 使用方法
 
-### Windows Side
 ```powershell
 cargo run --release
-# or
-./target/release/win-way.exe
 ```
 
-### WSL Side
-```bash
-WIN_IP=$(ip route | grep default | cut -d' ' -f3)
-socat UNIX-LISTEN:/tmp/wayland-winway,fork TCP:$WIN_IP:9999 &
-export WAYLAND_DISPLAY=/tmp/wayland-winway
-your-wayland-app
-```
+启动后会打开一个窗口，监听 TCP 端口 9999。
 
-## CLI Options
+## 命令行参数
 
 ```
 win-way [OPTIONS]
-  -p, --port <PORT>    TCP port to listen on (default: 9999)
-  -d, --debug          Enable debug logging
+  -p, --port <PORT>    监听端口 (默认: 9999)
+  -d, --debug          开启调试日志
 ```
 
-## Requirements
+## 系统要求
 
-- Windows 10+ with OpenGL 3.3 support
+- Windows 10+
+- 支持 OpenGL 3.3 的显卡
 - Rust 1.70+
-- WSL2 with socat installed
 
-## WPRD Frame Format
+## 许可证
 
-```
-┌──────────┬───────────┬───────────┬──────────┬───────────┬──────────┐
-│ Magic    │ Width     │ Height    │ Format   │ Data Size │ Data     │
-│ "WPRD"   │ (u32)     │ (u32)     │ (u32)    │ (u32)     │ (bytes)  │
-└──────────┴───────────┴───────────┴──────────┴───────────┴──────────┘
-```
-
-## License
-
-MIT
+GPL-3.0
