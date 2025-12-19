@@ -10,12 +10,22 @@ glutin-winit = "0.5"
 raw-window-handle = "0.6"
 log = "0.4"
 env_logger = "0.11"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync", "io-util"] }
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "1"
+glow = "0.16"  # OpenGL wrapper for easier GL calls
+num_cpus = "1"
 
-# We use our custom fork which has the exposed WinitBackend for Windows/Mac
-[dependencies.smithay]
-git = "https://github.com/J-x-Z/smithay-universal"
-default-features = false
-features = ["backend_winit", "renderer_gl"] # Disabled 'wayland_frontend' for initial Windows PoC
+# NOTE: smithay-universal is disabled for now - Windows support is incomplete
+# The fork uses Unix-only APIs (std::os::unix, rustix::fs/mm/time, wayland_egl, xkbcommon)
+# that are not available on Windows. Once the fork implements Windows abstraction
+# layers, this can be re-enabled.
+# 
+# [dependencies.smithay]
+# git = "https://github.com/J-x-Z/smithay-universal"
+# default-features = false
+# features = ["backend_winit", "renderer_gl"]
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Windows specific deps if needed

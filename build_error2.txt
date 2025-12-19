@@ -1,0 +1,18 @@
+   Compiling win-way v0.1.0 (C:\Users\Z1529\.gemini\antigravity\scratch\win-way)
+error[E0432]: unresolved import `winit::window::WindowBuilder`
+ --> src\main.rs:4:5
+  |
+4 |     window::WindowBuilder,
+  |     ^^^^^^^^^^^^^^^^^^^^^ no `WindowBuilder` in `window`
+
+warning: use of deprecated method `winit::event_loop::EventLoop::<T>::run`: use `EventLoop::run_app` instead
+  --> src\main.rs:20:16
+   |
+20 |     event_loop.run(move |event, elwt| {
+   |                ^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+For more information about this error, try `rustc --explain E0432`.
+warning: `win-way` (bin "win-way") generated 1 warning
+error: could not compile `win-way` (bin "win-way") due to 1 previous error; 1 warning emitted
