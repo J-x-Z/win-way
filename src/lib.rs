@@ -8,3 +8,4 @@ pub mod protocol;
 pub mod renderer;
 pub mod frame;
 pub mod error;
+pub mod wayland;

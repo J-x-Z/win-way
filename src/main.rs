@@ -18,12 +18,15 @@ use winit::{
     event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
+    keyboard::{Key, NamedKey, PhysicalKey, KeyCode},
+    event::{ElementState, MouseButton},
 };
 
-use win_way::server::{ServerConfig, ServerEvent, start_server};
+use win_way::server::{ServerConfig, ServerEvent, ServerCommand, InputEvent, start_server};
 use win_way::protocol::Decoder;
 use win_way::renderer::Renderer;
 use win_way::frame::FrameDecoder;
+use win_way::wayland::WaylandClient;
 
 /// Win-Way: Native Waypipe Server for Windows
 #[derive(Parser, Debug)]
@@ -45,29 +48,39 @@ struct App {
     decoder: Decoder,
     frame_decoder: FrameDecoder,
     server_rx: Option<std_mpsc::Receiver<ServerEvent>>,
+    server_command_tx: Option<tokio::sync::broadcast::Sender<ServerCommand>>,
+    wayland_clients: std::collections::HashMap<u32, WaylandClient>,
     client_count: u32,
     start_time: Instant,
     last_size: (u32, u32),
 }
 
 impl App {
-    fn new(server_rx: std_mpsc::Receiver<ServerEvent>) -> Self {
+    fn new(server_rx: std_mpsc::Receiver<ServerEvent>, server_command_tx: tokio::sync::broadcast::Sender<ServerCommand>) -> Self {
         Self {
             window: None,
             renderer: Renderer::new(),
             decoder: Decoder::new(),
             frame_decoder: FrameDecoder::new(),
             server_rx: Some(server_rx),
+            server_command_tx: Some(server_command_tx),
+            wayland_clients: std::collections::HashMap::new(),
             client_count: 0,
             start_time: Instant::now(),
             last_size: (800, 600),
         }
     }
 
+
     fn process_server_events(&mut self) {
         if let Some(rx) = &self.server_rx {
-            // Non-blocking receive of all pending events
+            // Non-blocking receive of all pending events (limit to 100 per frame to prevent starvation)
+            let mut count = 0;
             while let Ok(event) = rx.try_recv() {
+                if count > 100 {
+                    break;
+                }
+                count += 1;
                 match event {
                     ServerEvent::ClientConnected { id } => {
                         info!("🔗 Client {} connected", id);
@@ -79,26 +92,36 @@ impl App {
                         self.client_count = self.client_count.saturating_sub(1);
                         self.update_title();
                     }
-                    ServerEvent::Data { id, data } => {
-                        debug!("📦 Received {} bytes from client {}", data.len(), id);
-                        
-                        // Try to decode as render frames from winpipe
-                        self.frame_decoder.push(&data);
-                        while let Some(frame) = self.frame_decoder.decode() {
-                            info!("🎨 Received frame: {}x{}", frame.width, frame.height);
-                            self.renderer.update_surface(
-                                id,
-                                &frame.data,
-                                frame.width,
-                                frame.height
-                            );
+                    ServerEvent::Data { id: _, data: _ } => {
+                        // Handled by server now
+                    }
+                    ServerEvent::Render(client_id, render_event) => {
+                        match render_event {
+                            win_way::wayland::client::RenderEvent::SurfaceCreated { id: sid } => {
+                                info!("🖼️ Surface {} created", sid);
+                            }
+                            win_way::wayland::client::RenderEvent::SurfaceCommit { surface_id, width, height, data } => {
+                                info!("🎨 Surface {} commit: {}x{} ({} bytes)", surface_id, width, height, data.len());
+                                self.renderer.update_surface(client_id, &data, width as u32, height as u32);
+                            }
+                            win_way::wayland::client::RenderEvent::SurfaceDestroyed { id: sid } => {
+                                info!("💥 Surface {} destroyed", sid);
+                            }
+                            win_way::wayland::client::RenderEvent::TitleChanged { surface_id, title } => {
+                                info!("📝 Surface {} title: {}", surface_id, title);
+                                if let Some(window) = &self.window {
+                                    window.set_title(&format!("Win-Way | {}", title));
+                                }
+                            }
+                            win_way::wayland::client::RenderEvent::PixelData { .. } => {
+                                // Handled via ServerEvent::PixelData
+                            }
                         }
-                        
-                        // Also try the protocol decoder for waypipe messages
-                        self.decoder.push(&data);
-                        while let Some(msg) = self.decoder.decode() {
-                            debug!("Decoded message: {:?}", msg.msg_type);
-                        }
+                    }
+                    ServerEvent::PixelData { client_id, surface_id, width, height, format: _, data } => {
+                        info!("🎨 PIXL: Surface {} from client {} - {}x{} ({} bytes)", 
+                            surface_id, client_id, width, height, data.len());
+                        self.renderer.update_surface(client_id, &data, width, height);
                     }
                 }
             }
@@ -159,6 +182,10 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 info!("👋 Close requested, exiting...");
+                // Force shutdown server?
+                if let Some(tx) = &self.server_command_tx {
+                    let _ = tx.send(ServerCommand::Shutdown);
+                }
                 self.renderer.cleanup();
                 event_loop.exit();
             }
@@ -168,9 +195,91 @@ impl ApplicationHandler for App {
                     self.renderer.resize(size.width, size.height);
                 }
             }
+            WindowEvent::Focused(focused) => {
+                info!("👁️ Window Focused: {}", focused);
+            }
             WindowEvent::RedrawRequested => {
+                // info!("🎨 RedrawRequested"); // Too noisy, maybe just once in a while?
                 let time = self.elapsed_time();
                 self.renderer.render(self.last_size.0, self.last_size.1, time);
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                info!("🔴 RAW INPUT: physical_key={:?} state={:?}", event.physical_key, event.state);
+                if let PhysicalKey::Code(keycode) = event.physical_key {
+                    let state = match event.state {
+                        ElementState::Pressed => 1,
+                        ElementState::Released => 0,
+                    };
+                    
+                    // Simple manual mapping for testing
+                    // TODO: Complete mapping or use crate
+                    let linux_code = match keycode {
+                        KeyCode::Escape => 1,
+                        KeyCode::Digit1 => 2, KeyCode::Digit2 => 3, KeyCode::Digit3 => 4,
+                        KeyCode::Backspace => 14,
+                        KeyCode::Tab => 15,
+                        KeyCode::KeyQ => 16, KeyCode::KeyW => 17, KeyCode::KeyE => 18, KeyCode::KeyR => 19,
+                        KeyCode::KeyT => 20, KeyCode::KeyY => 21, KeyCode::KeyU => 22, KeyCode::KeyI => 23,
+                        KeyCode::KeyO => 24, KeyCode::KeyP => 25,
+                        KeyCode::Enter => 28,
+                        KeyCode::ControlLeft => 29,
+                        KeyCode::KeyA => 30, KeyCode::KeyS => 31, KeyCode::KeyD => 32, KeyCode::KeyF => 33,
+                        KeyCode::KeyG => 34, KeyCode::KeyH => 35, KeyCode::KeyJ => 36, KeyCode::KeyK => 37,
+                        KeyCode::KeyL => 38,
+                        KeyCode::ShiftLeft => 42,
+                        KeyCode::KeyZ => 44, KeyCode::KeyX => 45, KeyCode::KeyC => 46, KeyCode::KeyV => 47,
+                        KeyCode::KeyB => 48, KeyCode::KeyN => 49, KeyCode::KeyM => 50,
+                        KeyCode::Space => 57,
+                        KeyCode::Minus => 12,
+                        KeyCode::Equal => 13,
+                        KeyCode::BracketLeft => 26,
+                        KeyCode::BracketRight => 27,
+                        KeyCode::Backslash => 43,
+                        KeyCode::Semicolon => 39,
+                        KeyCode::Quote => 40,
+                        KeyCode::Comma => 51,
+                        KeyCode::Period => 52,
+                        KeyCode::Slash => 53,
+                        KeyCode::AltLeft => 56,
+                        KeyCode::ArrowUp => 103,
+                        KeyCode::ArrowLeft => 105,
+                        KeyCode::ArrowRight => 106,
+                        KeyCode::ArrowDown => 108,
+                        _ => 0,
+                    };
+
+                    if linux_code != 0 {
+                         // info!("⌨️ Key Event: code={}, state={}", linux_code, state);
+                         if let Some(tx) = &self.server_command_tx {
+                             let _ = tx.send(ServerCommand::SendInput(InputEvent::Key { state, code: linux_code }));
+                         }
+                    } else {
+                        // info!("⌨️ Unknown Key: {:?}", event.physical_key);
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                if let Some(tx) = &self.server_command_tx {
+                     let _ = tx.send(ServerCommand::SendInput(InputEvent::Motion { x: position.x, y: position.y }));
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                // Map MouseButton
+                let btn = match button {
+                    MouseButton::Left => 0x110, // BTN_LEFT
+                    MouseButton::Right => 0x111, // BTN_RIGHT
+                    MouseButton::Middle => 0x112, // BTN_MIDDLE
+                    _ => 0,
+                };
+                let s = match state {
+                    ElementState::Pressed => 1,
+                    ElementState::Released => 0,
+                };
+                if btn != 0 {
+                    if let Some(tx) = &self.server_command_tx {
+                         let _ = tx.send(ServerCommand::SendInput(InputEvent::Button { state: s, button: btn }));
+                    }
+                }
             }
             _ => {}
         }
@@ -195,6 +304,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         env_logger::Builder::from_env(
             env_logger::Env::default().default_filter_or("debug")
         ).init();
+        info!("🚀 STARTING WIN-WAY V2 (YELLOW DEBUG VERSION) 🚀");
     } else {
         env_logger::Builder::from_env(
             env_logger::Env::default().default_filter_or("info")
@@ -212,8 +322,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     info!("📡 TCP listening on 0.0.0.0:{}", args.port);
     info!("💡 Connect from WSL: socat TCP:$(cat /etc/resolv.conf | grep nameserver | awk '{{print $2}}'):{} UNIX-LISTEN:/tmp/wayland-0", args.port);
 
-    // Create channel for server -> main thread communication
-    let (tx, rx) = std_mpsc::channel();
+    // Create channel for server -> main thread communication (Events)
+    let (event_tx, event_rx) = std_mpsc::channel();
+    
+    // Create channel to extract command_tx from the server thread
+    let (startup_tx, startup_rx) = std_mpsc::channel();
 
     // Start tokio runtime in a separate thread for the TCP server
     let port = args.port;
@@ -229,9 +342,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 Ok(mut handle) => {
                     info!("✅ TCP server started");
                     
+                    // Send the command channel back to main thread
+                    let _ = startup_tx.send(handle.command_tx.clone());
+
                     // Forward events to the main thread
                     while let Some(event) = handle.events.recv().await {
-                        if tx.send(event).is_err() {
+                        if event_tx.send(event).is_err() {
                             break;
                         }
                     }
@@ -243,11 +359,22 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         });
     });
 
+    // Wait for server to start and give us the command channel
+    info!("⏳ Waiting for server to initialize...");
+    let server_command_tx = match startup_rx.recv() {
+        Ok(tx) => tx,
+        Err(_) => {
+            error!("Failed to receive command channel from server thread");
+            return Ok(());
+        }
+    };
+    info!("✅ Server control channel received");
+
     // Start winit event loop
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll); // Poll for continuous animation
 
-    let mut app = App::new(rx);
+    let mut app = App::new(event_rx, server_command_tx);
     event_loop.run_app(&mut app)?;
 
     Ok(())

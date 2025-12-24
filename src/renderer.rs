@@ -49,7 +49,8 @@ impl Renderer {
             texture_width: 0,
             texture_height: 0,
             initialized: false,
-            clear_color: [0.08, 0.08, 0.12, 1.0], // Dark blue-gray
+
+            clear_color: [0.1, 0.1, 0.1, 1.0], // Dark gray
         }
     }
 
@@ -217,7 +218,10 @@ impl Renderer {
             uniform float uTime;
             void main() {
                 if (uHasTexture) {
-                    FragColor = texture(uTexture, TexCoord);
+                    vec4 color = texture(uTexture, TexCoord);
+                    // Force alpha to 1.0 to handle XRGB where alpha might be 0
+                    // Also handles RB swap if needed (Wayland BGRA vs GL RGBA) later
+                    FragColor = vec4(color.rgb, 1.0);
                 } else {
                     // Animated gradient when no texture (visual feedback)
                     float t = uTime * 0.5;
@@ -312,6 +316,20 @@ impl Renderer {
 
         debug!("📺 Updating surface: {}x{} ({} bytes)", width, height, data.len());
 
+        // Skip if no data or invalid size
+        if data.is_empty() || width == 0 || height == 0 {
+            debug!("Skipping empty surface update");
+            return;
+        }
+
+        // Validate data size (assuming RGBA - 4 bytes per pixel)
+        let expected_size = (width * height * 4) as usize;
+        if data.len() < expected_size {
+            warn!("Surface data too small: got {} bytes, expected {} for {}x{} RGBA", 
+                data.len(), expected_size, width, height);
+            return;
+        }
+
         unsafe {
             // Create texture if needed or size changed
             if self.texture.is_none() || self.texture_width != width || self.texture_height != height {
@@ -347,13 +365,19 @@ impl Renderer {
                     glow::UNSIGNED_BYTE,
                     glow::PixelUnpackData::Slice(Some(data)),
                 );
+                // info!("✅ Texture uploaded: {}x{}", width, height); 
             }
         }
     }
 
     /// Render a frame
     pub fn render(&self, window_width: u32, window_height: u32, time: f32) {
-        let Some(gl) = &self.gl else { return };
+        // debug!("Render loop called"); // Is this spamming?
+        
+        let Some(gl) = &self.gl else { 
+            error!("RENDERER: No GL context!");
+            return 
+        };
         let Some(context) = &self.context else { return };
         let Some(surface) = &self.surface else { return };
         let Some(program) = &self.program else { return };
@@ -368,6 +392,13 @@ impl Renderer {
 
             // Set uniforms
             let has_texture = self.texture.is_some();
+            
+            // Log every 60 frames (approx 1 sec) roughly to avoid spam, or use trace
+            // For now just debug once if state changes? No, let's just log if has_texture is true
+            if has_texture {
+                // trace!("Rendering with texture");
+            }
+
             if let Some(loc) = gl.get_uniform_location(*program, "uHasTexture") {
                 gl.uniform_1_i32(Some(&loc), has_texture as i32);
             }
