@@ -4,12 +4,17 @@ Windows-native display server for Wayland applications (Experimental)
 
 ## Current Status
 
-⚠️ **This is an experimental project with very limited functionality:**
+⚠️ **This is an experimental project demonstrating architectural feasibility:**
 
 - ✅ Can create a GPU-accelerated Windows window
-- ✅ Can accept TCP connections
+- ✅ Can accept TCP connections  
 - ✅ Can display frames sent via WPRD protocol
-- ❌ **Cannot display WSL Wayland apps** (Unix file descriptors cannot be passed over TCP)
+- ⚠️ Simple clients render correctly
+- ❌ Complex apps (browsers) crash during buffer allocation
+
+## 📚 Research
+
+Part of the **"Turbo-Charged Protocol Virtualization"** research. See [../paper/](../paper/) for manuscript and benchmarks.
 
 ## Installation
 
